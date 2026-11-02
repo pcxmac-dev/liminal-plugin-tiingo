@@ -138,7 +138,7 @@ def test_the_app_loads_its_two_feeds_from_this_package_with_its_own_version():
     for name in ("tiingo", "tiingofx"):
         p = provider(name)
         assert p is not None, dict(registry.errors())
-        assert p.origin == "package: liminal-plugin-tiingo (liminal_plugin_tiingo)"
+        assert p.origin in {"package: liminal-plugin-tiingo (liminal_plugin_tiingo)", "plugins/liminal-plugin-tiingo (liminal_plugin_tiingo)"}  # its package, or its checkout in the workspace\'s plugin directory
         assert p.version == version("liminal-plugin-tiingo") and p.api == "1.10"
         assert registry.api_refusal(p.api) is None
     assert tiingo.TIINGO.version == "" and tiingo.FOREX.version == ""

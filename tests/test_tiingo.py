@@ -19,7 +19,7 @@ from liminal_lib.symbols import resolve
 
 import liminal_plugin_tiingo as tiingo
 from liminal_plugin_tiingo import PER_DAY, PER_RUN, TIER, TIINGO_BOATS, BoatsPoller, _iso_ms, boats_live, plan_of
-from liminal_plugin_tiingo.client import TiingoFxSource, TiingoSource, split_adjust
+from liminal_plugin_tiingo.client import TiingoFxSource, TiingoSource, split_adjust, tiingo_symbol
 
 from .conftest import FakeResponse, FakeSession
 
@@ -50,6 +50,59 @@ def test_tiingo_is_split_adjusted_only_and_needs_a_key():
     assert not keyless.serves("stock") and keyless.resolutions("stock") == ()
     with pytest.raises(NotEntitled):
         next(keyless.bar_pages("AAPL", date(2020, 1, 1), date(2020, 1, 2), "day"))
+
+
+def test_an_a_share_is_asked_by_its_bare_code_and_its_record_names_and_dates_it():
+    rows = [{"date": "2026-10-30T00:00:00.000Z", "open": 1500.0, "high": 1510.0, "low": 1490.0, "close": 1505.0,
+             "volume": 100, "splitFactor": 1.0, "divCash": 0.0}]
+    meta = {"ticker": "600519", "exchangeCode": "SHG", "name": "Kweichow Moutai Company Ltd", "startDate": "2007-01-04",
+            "endDate": "2026-11-02"}
+    client, session = _client([FakeResponse(200, rows), FakeResponse(200, meta)])
+    src = TiingoSource(client, has_key=True)
+    bars = next(src.bar_pages("600519.SS", date(2026, 10, 1), date(2026, 10, 31), "day"))
+    assert len(bars) == 1 and session.calls[0][0].endswith("/tiingo/daily/600519/prices")
+    inst = src.instrument("600519.SS")
+    assert session.calls[1][0].endswith("/tiingo/daily/600519")
+    assert inst.ticker == "600519.SS" and inst.list_date == date(2007, 1, 4) and inst.primary_exchange.mic == "XSHG"
+    assert inst.name.startswith("Kweichow") and inst.currency == "CNY" and inst.active
+    assert inst.primary_exchange.name == "Shanghai Stock Exchange" and inst.primary_exchange.country.code == "CN"
+    assert tiingo_symbol("000001.SZ") == "000001" and tiingo_symbol("BRK.B") == "BRK-B" and tiingo_symbol("aapl") == "AAPL"
+    with pytest.raises(NotImplementedError):
+        src.instrument("AAPL")  # a US stock's identity is the whole-market feeds'
+    assert [(e.mic, e.name) for e in src.exchanges()] == [("XSHE", "Shenzhen Stock Exchange"), ("XSHG", "Shanghai Stock Exchange")]
+    registry.reload()
+    assert supports("tiingo", resolve("600519.SS")) and supports("tiingo", resolve("000001.SZ"))
+    assert supports("tiingo", resolve("AAPL")) and not supports("tiingo", resolve("7203.T"))  # Tokyo: not Tiingo's
+
+
+def test_its_a_shares_are_listed_from_the_supported_tickers_file_only_when_asked_for():
+    import io
+    import zipfile
+
+    text = ("ticker,exchange,assetType,priceCurrency,startDate,endDate\n"
+            "600519,SHG,Stock,CNY,2007-01-04,2026-11-02\n000001,SHE,Stock,CNY,2007-01-04,2026-11-02\n"
+            "600000,SHG,Stock,CNY,2007-01-04,2019-03-01\n510050,SHG,ETF,CNY,2007-01-04,2026-11-02\n"
+            "AAPL,NASDAQ,Stock,USD,1980-12-12,2026-11-02\n")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("supported_tickers.csv", text)
+    response = FakeResponse(200, {})
+    response.content = buf.getvalue()
+    client, session = _client([])
+    files_session = FakeSession([response])
+    files = PublicClient("https://apimedia.tiingo.com", session=files_session, sleep=lambda s: None)  # keyless: another host
+    src = TiingoSource(client, has_key=True, listings_on=True, today=date(2026, 11, 2), files=files)
+    assert src.listings("XSHG") == [{"ticker": "600519.SS", "name": None, "exchange": "XSHG", "type": "CS", "figi": None,
+                                     "kind": "stock"}]  # 600000 ended in 2019; the ETF is not a stock
+    assert [r["ticker"] for r in src.listings("XSHE")] == ["000001.SZ"] and len(files_session.calls) == 1  # one download
+    assert files_session.calls[0][0] == "https://apimedia.tiingo.com/docs/tiingo/daily/supported_tickers.zip"
+    assert session.calls == [] and "Authorization" not in (files_session.calls[0][2] or {})  # nothing, and no key, to the file host
+    assert src.listings("XNAS") == []  # the US listings are the whole-market feeds' directory
+    off = TiingoSource(_client([])[0], has_key=True)
+    with pytest.raises(NotImplementedError):
+        off.listings("XSHG")
+    assert tiingo.listings_on(load_settings(env={**KEYS, "TIINGO_LISTINGS": "on"}, env_file=None))
+    assert not tiingo.listings_on(load_settings(env=KEYS, env_file=None))
 
 
 class FakeTiingo:
@@ -139,12 +192,12 @@ def test_the_app_loads_its_two_feeds_from_this_package_with_its_own_version():
         p = provider(name)
         assert p is not None, dict(registry.errors())
         assert p.origin in {"package: liminal-plugin-tiingo (liminal_plugin_tiingo)", "plugins/liminal-plugin-tiingo (liminal_plugin_tiingo)"}  # its package, or its checkout in the workspace\'s plugin directory
-        assert p.version == version("liminal-plugin-tiingo") and p.api == "1.10"
+        assert p.version == version("liminal-plugin-tiingo") and p.api == "1.12"
         assert registry.api_refusal(p.api) is None
     assert tiingo.TIINGO.version == "" and tiingo.FOREX.version == ""
     assert not [why for where, why in registry.errors() if "tiingo" in where or "tiingo" in why]
     row = {r["name"]: r for r in registry.menu()}["tiingo"]
-    assert (row["version"], row["api"]) == (version("liminal-plugin-tiingo"), "1.10")
+    assert (row["version"], row["api"]) == (version("liminal-plugin-tiingo"), "1.12")
     assert registry.plugin_feeds("tiingo") == ["tiingo", "tiingofx"] and registry.plugin_of("tiingofx") == "tiingo"
 
 
@@ -159,6 +212,7 @@ def test_it_keeps_the_facts_it_had_built_in(monkeypatch):
     assert is_archive("tiingo") and not is_archive("tiingofx")
     assert markets("tiingo", s) == {"stock": "sip"} and markets("tiingofx", s) == {"fx": "tiingofx"}
     assert supports("tiingo", resolve("AAPL")) and not supports("tiingo", resolve("EURUSD"))
+    assert provider("tiingo").exchanges == {"US", "XSHG", "XSHE"} and provider("tiingo").options == ("TIINGO_LISTINGS",)
     assert history_floor(view.tier, date(2026, 10, 27)) == date(1962, 1, 1)
     fx = power.for_source("tiingofx")
     assert fx.tier.name == "tiingo-power" and history_floor(fx.tier, date(2026, 10, 28), "fx") == date(2020, 1, 1)

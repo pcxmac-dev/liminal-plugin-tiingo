@@ -29,11 +29,23 @@ or with the app's plugins (`pip install -e ".[plugins]"` in liminal-app). The ap
 start. Save the key with the app's `tools/set-key.ps1` (it is read from your user environment
 variables only, never written to a file).
 
+## Shanghai and Shenzhen
+
+The stocks feed carries the A-shares Tiingo serves (from 2007-01-04), under the library's names for
+a listing abroad: `600519.SS` (Shanghai, XSHG) and `000001.SZ` (Shenzhen, XSHE); `SSE:600519` and
+`600519::XSHG` mean the same. Tiingo lists them by their bare codes, which the feed asks for. Their
+days are the exchanges' own calendar days (every weekday, until the library carries their holidays),
+their day bars stamped at midnight New York of the local date like every stock's. With
+`TIINGO_LISTINGS=on` (the Plugins view, or the key script) the directory lists every A-share Tiingo
+serves, from its supported-tickers file: about 10 MB, downloaded at each directory refresh while on,
+so turn it on for the listing and off again on a plan of 1 GB a month.
+
 ## Compatibility
 
-It is written for plugin API 1.10 (`PLUGIN.api`: the machine-wide ledger and the session calendar
-reached through the contract). An app offering 1.10 or a later 1.x loads it; an app of another
-major, or one older than 1.10, leaves it out and says why on the Plugins view.
+It is written for plugin API 1.12 (`PLUGIN.api`: the exchanges a feed carries, `Provider.exchanges`,
+the machine-wide ledger and the session calendar reached through the contract; liminal-lib 1.2.0 or
+later). An app offering 1.12 or a later 1.x loads it; an app of another major, or one older than
+1.12, leaves it out and says why on the Plugins view.
 
 ## Develop
 

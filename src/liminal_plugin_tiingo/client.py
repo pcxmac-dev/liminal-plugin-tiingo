@@ -1,16 +1,39 @@
-"""Tiingo's sources (tiingo.com): the stocks' daily bars from 1962, adjusted here for splits only (from
-Tiingo's split factors, so they continue the other feeds' split-adjusted bars without a dividend seam),
-and the currencies' 1-minute bars from 2020; on the app's keyless client with Tiingo's token."""
+"""Tiingo's sources (tiingo.com): the stocks' daily bars from 1962 (the US) and 2007 (Shanghai's and
+Shenzhen's A-shares), adjusted here for splits only (from Tiingo's split factors, so they continue the
+other feeds' split-adjusted bars without a dividend seam), and the currencies' 1-minute bars from 2020;
+on the app's keyless client with Tiingo's token."""
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+import csv
+import io
+import zipfile
+from datetime import date, datetime, timedelta, timezone
 from typing import Iterator
 
 from liminal_lib.errors import NotEntitled, SourceError
-from liminal_lib.models import Instrument
+from liminal_lib.models import Exchange, Instrument, Stock, country, exchange_name, listing_ticker, suffix_mic
 from liminal_lib.sources.archive import ET, Archive as _Archive, bounds as _bounds, ms as _ms
 from liminal_lib.sources.base import Page
 from liminal_lib.sources.http import PublicClient
+
+# The exchanges abroad Tiingo carries here (plugin API 1.12: Provider.exchanges), by Tiingo's exchange
+# code: Shanghai's and Shenzhen's A-shares, which it lists under their bare codes (asked 2026-11-02:
+# /tiingo/daily/600519 answers exchangeCode SHG and startDate 2007-01-04; 000001, SHE). A listing is
+# stored as 600519.SS and 000001.SZ (the library's notation) and asked for by its code.
+EXCHANGE_CODES = {"XSHG": "SHG", "XSHE": "SHE"}
+MICS = {code: mic for mic, code in EXCHANGE_CODES.items()}
+FILES = "https://apimedia.tiingo.com"  # Tiingo's files, apart from its API (no key goes there)
+SUPPORTED_TICKERS = FILES + "/docs/tiingo/daily/supported_tickers.zip"  # every ticker it serves, ~10 MB
+LISTING_DAYS = 14  # a listing Tiingo last served longer ago than this is no longer listed
+
+
+def tiingo_symbol(ticker: str) -> str:
+    """Tiingo's name for a stock: BRK-B for BRK.B; a listing abroad by its bare code (600519 for 600519.SS)."""
+    t = ticker.upper()
+    base, dot, tail = t.rpartition(".")
+    if base and dot and suffix_mic(tail) in EXCHANGE_CODES:
+        return base
+    return t.replace(".", "-")
 
 
 def split_adjust(rows: list[dict]) -> list[dict]:
@@ -32,16 +55,22 @@ def split_adjust(rows: list[dict]) -> list[dict]:
 
 
 class TiingoSource(_Archive):
-    """US stock daily history with a free Tiingo key. One request returns a symbol's whole history
-    (needed anyway: a split today changes the adjustment of every earlier day)."""
+    """Stock daily history with a free Tiingo key: the US from 1962, Shanghai's and Shenzhen's A-shares
+    from 2007. One request returns a symbol's whole history (needed anyway: a split today changes
+    the adjustment of every earlier day)."""
 
     name = "tiingo"
     assets = ("stock",)
 
-    def __init__(self, client: PublicClient, has_key: bool):
+    def __init__(self, client: PublicClient, has_key: bool, listings_on: bool = False, today: date | None = None,
+                 files: PublicClient | None = None):
         super().__init__(client)
         self.has_key = has_key
+        self.files = files  # a keyless client of Tiingo's file host (the API client sends the key to its host alone)
+        self.listings_on = listings_on  # TIINGO_LISTINGS: the A-shares listed from the supported-tickers file
+        self.today = today
         self._history: dict[str, list[dict]] = {}
+        self._supported: list[dict] | None = None
 
     def serves(self, asset: str) -> bool:
         return asset == "stock" and self.has_key
@@ -49,8 +78,70 @@ class TiingoSource(_Archive):
     def resolutions(self, asset: str) -> tuple[str, ...]:
         return ("day",) if asset == "stock" and self.has_key else ()
 
+    def exchanges(self) -> list[Exchange]:
+        """The exchanges abroad it carries (plugin API 1.12), by name: Shanghai and Shenzhen. The US
+        exchanges' rows are the whole-market feeds'."""
+        return [Exchange(self.name, i, exchange_name(mic) or mic, country("CN"), mic=mic, acronym=code, type="exchange")
+                for i, (mic, code) in enumerate(sorted(EXCHANGE_CODES.items()), 1)]
+
+    def instrument(self, ticker: str, resolve_exchange: bool = True) -> Instrument:
+        """A listing abroad's record (one request): its name, its exchange, and Tiingo's first day of
+        it (2007-01-04 for the A-shares: Tiingo's start, not the listing's). A US stock's identity is
+        the whole-market feeds' (Massive's record dates it: the Archive's rule)."""
+        if not self.has_key:
+            raise NotEntitled(401, "TIINGO_API_KEY not set; nothing sent")
+        sym = tiingo_symbol(ticker)
+        if sym == ticker.upper().replace(".", "-"):
+            raise NotImplementedError("tiingo has no reference data for US stocks here")
+        r = self.client.get(f"/tiingo/daily/{sym}")
+        if not isinstance(r, dict) or not r.get("ticker"):
+            raise SourceError(0, f"unexpected Tiingo answer for {sym}")
+        code = str(r.get("exchangeCode") or "").upper()
+        mic = MICS.get(code)
+        exchange = Exchange(self.name, 0, exchange_name(mic) or code, country("CN"), mic=mic, acronym=code,
+                            type="exchange") if mic else None
+        start = str(r.get("startDate") or "")[:10]
+        return Stock(ticker=ticker.upper(), name=r.get("name"), primary_exchange=exchange, currency="CNY",
+                     list_date=date.fromisoformat(start) if start else None, details=r)
+
+    def _supported_rows(self) -> list[dict]:
+        if self._supported is None:
+            if self.files is None:
+                self.files = PublicClient(FILES, sleep=self.client.sleep) if hasattr(self.client, "sleep") else PublicClient(FILES)
+            data, _ = self.files.get_bytes(SUPPORTED_TICKERS)
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                name = next((n for n in z.namelist() if n.lower().endswith(".csv")), None)
+                if name is None:
+                    raise SourceError(0, "Tiingo's supported-tickers file has no CSV in it")
+                text = z.read(name).decode("utf-8", "replace")
+            self._supported = list(csv.DictReader(io.StringIO(text)))
+        return self._supported
+
+    def listings(self, exchange: str) -> list[dict]:
+        """Every A-share Tiingo serves on an exchange it carries (XSHG, XSHE), from its supported-tickers
+        file (every ticker it serves, about 10 MB zipped: one download a run), under their stored
+        names (600519.SS). Only with TIINGO_LISTINGS on: the file is heavy for a daily directory
+        refresh on a plan of 1 GB a month. The US exchanges' listings are the whole-market feeds'
+        directory: an empty answer here."""
+        mic = exchange.upper()
+        code = EXCHANGE_CODES.get(mic)
+        if code is None:
+            return []
+        if not self.listings_on:
+            raise NotImplementedError("TIINGO_LISTINGS is off: Tiingo's supported-tickers file is not downloaded")
+        cut = ((self.today or date.today()) - timedelta(days=LISTING_DAYS)).isoformat()
+        out = []
+        for r in self._supported_rows():
+            if (r.get("exchange") or "").upper() != code or (r.get("assetType") or "").lower() != "stock":
+                continue
+            if (r.get("endDate") or "") < cut:
+                continue  # Tiingo stopped serving it: delisted
+            out.append({"ticker": listing_ticker(r["ticker"], mic), "name": None, "exchange": mic, "type": "CS",
+                        "figi": None, "kind": "stock"})
+        return out
+
     def _all(self, ticker: str) -> list[dict]:
-        sym = ticker.upper().replace(".", "-")
+        sym = tiingo_symbol(ticker)
         if sym not in self._history:
             rows = self.client.get(f"/tiingo/daily/{sym}/prices", {"startDate": "1950-01-01", "format": "json",
                                                                    "resampleFreq": "daily"})

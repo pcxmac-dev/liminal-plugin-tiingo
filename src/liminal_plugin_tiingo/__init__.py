@@ -1,13 +1,13 @@
-"""Tiingo (tiingo.com) for Liminal: US stock daily bars from 1962 with a free account key (a closed
-archive), its forex minutes from 2020 (a feed of this plugin on the same key), and Blue Ocean's
-overnight nights polled live on a paid plan.
+"""Tiingo (tiingo.com) for Liminal: US stock daily bars from 1962 and Shanghai's and Shenzhen's
+A-shares from 2007 with a free account key (a closed archive), its forex minutes from 2020 (a feed
+of this plugin on the same key), and Blue Ocean's overnight nights polled live on a paid plan.
 
 A Liminal plugin released on its own (liminal.sources.registry: Provider), registered under the
 entry point group `liminal.providers` as `tiingo`: one plugin, two feeds (PLUGINS: the stocks'
-daily archive `tiingo`, its forex `tiingofx`). It relies on plugin API 1.10 (the machine-wide ledger
-and the session calendar reached through the contract) and nothing of the app outside it
-(docs/ARCHITECTURE.md in liminal: "Providers are plugins"); its version is this distribution's
-(pyproject.toml), so the records' versions are left empty.
+daily archive `tiingo`, its forex `tiingofx`). It relies on plugin API 1.12 (the exchanges a feed
+carries: Provider.exchanges, so a listing abroad, 600519.SS, comes to it and to no US feed) and
+nothing of the app outside it (docs/ARCHITECTURE.md in liminal: "Providers are plugins"); its
+version is this distribution's (pyproject.toml), so the records' versions are left empty.
 
 Its scan (`capabilities`, one request each) asks what else the account's plan gives: IEX's minute
 bars (one exchange), forex and crypto bars, and Blue Ocean's overnight bars (a paid add-on,
@@ -74,6 +74,12 @@ def api_key(settings) -> str | None:
     return (settings.env.get(KEY) or "").strip() or None
 
 
+def listings_on(settings) -> bool:
+    """TIINGO_LISTINGS: whether the A-shares are listed in the directory from Tiingo's supported-tickers
+    file (about 10 MB, at each directory refresh while on)."""
+    return (settings.env.get("TIINGO_LISTINGS") or "").strip().lower() in ("on", "1", "true", "yes")
+
+
 def plan_of(settings) -> str:
     """TIINGO_PLAN's plan (an unknown value: Starter, the free plan's limits, never more)."""
     name = (settings.env.get("TIINGO_PLAN") or "starter").strip().lower()
@@ -99,7 +105,7 @@ def build(settings, request_budget):
     headers = {"Authorization": f"Token {key}"} if key else {}
     client = PublicClient(API, headers=headers, request_budget=request_budget,
                           rate_limiter=limiter("tiingo", settings, key))
-    source = TiingoSource(machine_caps(client, "tiingo", settings, key), has_key=bool(key))
+    source = TiingoSource(machine_caps(client, "tiingo", settings, key), has_key=bool(key), listings_on=listings_on(settings))
     return monthly_symbols(source, settings, key)
 
 
@@ -267,10 +273,12 @@ def night_poller(settings) -> BoatsPoller | None:
 
 
 TIINGO = Provider(
-    api="1.10",  # the contract it needs (MachineLedger and session_at through it); its version: the distribution's
+    api="1.12",  # the contract it needs (Provider.exchanges; MachineLedger, session_at); its version: the distribution's
     name="tiingo", title="Tiingo", build=build, assets=frozenset({"stock"}), order=60,
-    about="US stock daily bars from 1962 (a free account key)",
+    about="US stock daily bars from 1962, Shanghai's and Shenzhen's A-shares from 2007 (a free account key)",
     keys=(KeyVar(KEY),), signup="tiingo.com: a free account's API token",
+    exchanges=frozenset({"US", "XSHG", "XSHE"}),  # every US listing, and the A-shares (600519.SS, 000001.SZ)
+    options=("TIINGO_LISTINGS",),  # on: the A-shares listed in the directory from the supported-tickers file (~10 MB)
     archival=True, tier=TIER, per_run=PER_RUN, per_day=PER_DAY,
     limits="Starter (free): 50 requests an hour, 1,000 a day, 500 symbols and 1 GB a month; "
            "Power ($30 a month): 10,000 an hour, 100,000 a day, 40 GB a month; "
@@ -314,7 +322,7 @@ def build_forex(settings, request_budget):
 
 
 FOREX = Provider(
-    api="1.10",  # the contract it needs (part_of; the ledger through it); its version: the distribution's
+    api="1.12",  # the contract it needs (part_of; the ledger through it); its version: the distribution's
     name="tiingofx", title="Forex", build=build_forex, assets=frozenset({"fx"}), order=61, account="tiingo",
     part_of="tiingo",
     about="currency pairs' 1-minute bars from 2020, from Tiingo (its key and limits)",

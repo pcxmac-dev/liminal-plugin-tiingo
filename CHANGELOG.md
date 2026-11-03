@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0 (2026-11-02)
+
+Shanghai's and Shenzhen's A-shares (the user: "update existing plugins, add exchanges where applicable and
+symbols"): the stocks feed carries them (plugin API 1.12, `Provider.exchanges`: every US listing, XSHG and XSHE),
+stored as `600519.SS` and `000001.SZ` (the library's notation) and asked for by their bare codes, Tiingo's form
+(`/tiingo/daily/600519`, from 2007-01-04). A listing's record names it and its exchange (`instrument`); the
+exchanges come by name (`exchanges`); with `TIINGO_LISTINGS=on` the A-shares are listed in the directory from
+Tiingo's supported-tickers file (about 10 MB, at each directory refresh while on). Requires liminal-lib 1.2.0.
+
 ## 1.4.1 (2026-11-02)
 
 The plugin imports the library as `liminal_lib` and depends on liminal-lib (the app, renamed liminal-app, is no longer needed to run the tests; the user, 2026-11-02: "lets rename the app to liminal-app").

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1 (2026-11-03)
+
+`TIINGO_LISTINGS` has its choices (off, on) in the record, so the app's Plugins view offers it beside the plan.
+
 ## 1.5.0 (2026-11-02)
 
 Shanghai's and Shenzhen's A-shares (the user: "update existing plugins, add exchanges where applicable and

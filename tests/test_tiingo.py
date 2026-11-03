@@ -213,6 +213,7 @@ def test_it_keeps_the_facts_it_had_built_in(monkeypatch):
     assert markets("tiingo", s) == {"stock": "sip"} and markets("tiingofx", s) == {"fx": "tiingofx"}
     assert supports("tiingo", resolve("AAPL")) and not supports("tiingo", resolve("EURUSD"))
     assert provider("tiingo").exchanges == {"US", "XSHG", "XSHE"} and provider("tiingo").options == ("TIINGO_LISTINGS",)
+    assert provider("tiingo").plan_choices["TIINGO_LISTINGS"] == ("off", "on")  # the Plugins view offers it
     assert history_floor(view.tier, date(2026, 10, 27)) == date(1962, 1, 1)
     fx = power.for_source("tiingofx")
     assert fx.tier.name == "tiingo-power" and history_floor(fx.tier, date(2026, 10, 28), "fx") == date(2020, 1, 1)

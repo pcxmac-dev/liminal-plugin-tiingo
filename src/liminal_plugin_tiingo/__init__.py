@@ -284,7 +284,8 @@ TIINGO = Provider(
            "Power ($30 a month): 10,000 an hour, 100,000 a day, 40 GB a month; "
            "Commercial ($50 a month, a business): 20,000 an hour, 150,000 a day, 100 GB a month",
     symbols_per_month=450,  # Starter's 500 different symbols a month, a little inside (Power: PLANS)
-    plan_vars=("TIINGO_PLAN",), plan_choices={"TIINGO_PLAN": tuple(PLANS)}, plan_note=PLAN_NOTE,
+    plan_vars=("TIINGO_PLAN",), plan_choices={"TIINGO_PLAN": tuple(PLANS), "TIINGO_LISTINGS": ("off", "on")},
+    plan_note=PLAN_NOTE,  # TIINGO_LISTINGS: its choices, so the Plugins view offers it (off, the default, first)
     view=view, reporter=reporter,
     provides={"stock": ("day",)}, per_request={"day": None},  # one request: a symbol's whole history
     has_keys=lambda s: bool(api_key(s)),

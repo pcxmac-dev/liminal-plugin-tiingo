@@ -27,12 +27,12 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 
-from liminal.config import Tier
-from liminal.errors import SourceError
-from liminal.sources.archive import ET
-from liminal.sources.http import PublicClient
-from liminal.sources.registry import KeyVar, MachineLedger, Provider, Scanned, limiter, machine_caps
-from liminal.sources.stream import Live, session_at
+from liminal_lib.config import Tier
+from liminal_lib.errors import SourceError
+from liminal_lib.sources.archive import ET
+from liminal_lib.sources.http import PublicClient
+from liminal_lib.sources.registry import KeyVar, MachineLedger, Provider, Scanned, limiter, machine_caps
+from liminal_lib.sources.stream import Live, session_at
 from .client import TiingoFxSource, TiingoSource
 
 API = "https://api.tiingo.com"

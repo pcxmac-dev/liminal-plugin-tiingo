@@ -1,6 +1,6 @@
 # liminal-plugin-tiingo
 
-Tiingo for [Liminal](https://github.com/pcxmac-dev/liminal): one plugin, two feeds on one free
+Tiingo for [Liminal](https://github.com/pcxmac-dev/liminal-app): one plugin, two feeds on one free
 account key (`TIINGO_API_KEY`):
 
 - `tiingo`: US stock daily bars from 1962, split-adjusted here from Tiingo's split factors; a closed
@@ -14,7 +14,7 @@ News API) it also polls Blue Ocean's overnight session live for the stocks open 
 cap, one count of different symbols a month.
 
 A Liminal provider plugin released on its own. The app finds it through the entry point group
-`liminal.providers` and lists it on the Plugins view and in `python -m liminal plugins`
+`liminal.providers` and lists it on the Plugins view and in `liminal plugins`
 as `package: liminal-plugin-tiingo`, with this package's version.
 
 ## Install
@@ -22,10 +22,10 @@ as `package: liminal-plugin-tiingo`, with this package's version.
 Into the app's environment, from the app's folder:
 
 ```powershell
-.venv\Scripts\python.exe -m pip install "liminal-plugin-tiingo @ git+https://github.com/pcxmac-dev/liminal-plugin-tiingo@v1.4.0"
+.venv\Scripts\python.exe -m pip install "liminal-plugin-tiingo @ git+https://github.com/pcxmac-dev/liminal-plugin-tiingo@v1.4.1"
 ```
 
-or with the app's plugins (`pip install -e ".[plugins]"` in liminal). The app loads it on its next
+or with the app's plugins (`pip install -e ".[plugins]"` in liminal-app). The app loads it on its next
 start. Save the key with the app's `tools/set-key.ps1` (it is read from your user environment
 variables only, never written to a file).
 
@@ -39,7 +39,7 @@ major, or one older than 1.10, leaves it out and says why on the Plugins view.
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install "liminal @ git+https://github.com/pcxmac-dev/liminal@feature/collector"
+.venv\Scripts\python.exe -m pip install "liminal-lib @ git+https://github.com/pcxmac-dev/liminal-lib@main"
 .venv\Scripts\python.exe -m pip install -e ".[dev]"
 .venv\Scripts\python.exe -m pytest -q
 ```

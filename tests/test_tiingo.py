@@ -8,14 +8,14 @@ from importlib.metadata import version
 
 import pytest
 
-from liminal import freshness
-from liminal.collector import history_floor
-from liminal.config import load_settings
-from liminal.errors import NotEntitled
-from liminal.sources import feed_profiles, is_archive, markets, provider, providers, rate_window, registry, supports
-from liminal.sources.archive import ET, ms
-from liminal.sources.http import PublicClient
-from liminal.symbols import resolve
+from liminal_lib import freshness
+from liminal_lib.collector import history_floor
+from liminal_lib.config import load_settings
+from liminal_lib.errors import NotEntitled
+from liminal_lib.sources import feed_profiles, is_archive, markets, provider, providers, rate_window, registry, supports
+from liminal_lib.sources.archive import ET, ms
+from liminal_lib.sources.http import PublicClient
+from liminal_lib.symbols import resolve
 
 import liminal_plugin_tiingo as tiingo
 from liminal_plugin_tiingo import PER_DAY, PER_RUN, TIER, TIINGO_BOATS, BoatsPoller, _iso_ms, boats_live, plan_of

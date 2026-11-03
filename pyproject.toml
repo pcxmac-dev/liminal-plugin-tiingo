@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "liminal-plugin-tiingo"
-version = "1.4.0"  # the plugin's own release (CHANGELOG.md); the app shows it on the Plugins view
+version = "1.4.1"  # the plugin's own release (CHANGELOG.md); the app shows it on the Plugins view
 description = "Tiingo for Liminal: US stock daily bars from 1962 on a free Tiingo key, its forex minutes and Blue Ocean nights live on a paid plan."
 readme = "README.md"
 requires-python = ">=3.10"
 # the app it plugs into; which of its releases can load it is the plugin API the plugin declares
 # (PLUGIN.api, checked when the app loads it), not this line
-dependencies = ["liminal"]
+dependencies = ["liminal-lib"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

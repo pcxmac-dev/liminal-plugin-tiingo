@@ -6,11 +6,11 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Iterator
 
-from liminal.errors import NotEntitled, SourceError
-from liminal.models import Instrument
-from liminal.sources.archive import ET, Archive as _Archive, bounds as _bounds, ms as _ms
-from liminal.sources.base import Page
-from liminal.sources.http import PublicClient
+from liminal_lib.errors import NotEntitled, SourceError
+from liminal_lib.models import Instrument
+from liminal_lib.sources.archive import ET, Archive as _Archive, bounds as _bounds, ms as _ms
+from liminal_lib.sources.base import Page
+from liminal_lib.sources.http import PublicClient
 
 
 def split_adjust(rows: list[dict]) -> list[dict]:

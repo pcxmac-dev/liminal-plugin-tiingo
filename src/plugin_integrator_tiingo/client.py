@@ -10,11 +10,11 @@ import zipfile
 from datetime import date, datetime, timedelta, timezone
 from typing import Iterator
 
-from liminal_lib.errors import NotEntitled, SourceError
-from liminal_lib.models import Exchange, Instrument, Stock, country, exchange_name, listing_ticker, suffix_mic
-from liminal_lib.sources.archive import ET, Archive as _Archive, bounds as _bounds, ms as _ms
-from liminal_lib.sources.base import Page
-from liminal_lib.sources.http import PublicClient
+from liminal_libs.errors import NotEntitled, SourceError
+from liminal_libs.models import Exchange, Instrument, Stock, country, exchange_name, listing_ticker, suffix_mic
+from liminal_libs.sources.archive import ET, Archive as _Archive, bounds as _bounds, ms as _ms
+from liminal_libs.sources.base import Page
+from liminal_libs.sources.http import PublicClient
 
 # The exchanges abroad Tiingo carries here (plugin API 1.12: Provider.exchanges), by Tiingo's exchange
 # code: Shanghai's and Shenzhen's A-shares, which it lists under their bare codes (asked 2026-11-02:

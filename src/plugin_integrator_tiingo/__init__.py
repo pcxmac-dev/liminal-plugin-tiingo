@@ -4,7 +4,7 @@ of this plugin on the same key), and Blue Ocean's overnight nights polled live o
 
 A Liminal plugin released on its own, registered under the entry point group `liminal.providers` as
 `tiingo`: one plugin, two feeds (PLUGINS: the stocks' daily archive `tiingo`, its forex `tiingofx`),
-a class each on the class contract (plugin API 2.0, liminal_lib.sources.plugin: what a feed declares
+a class each on the class contract (plugin API 2.0, liminal_libs.sources.plugin: what a feed declares
 class attributes, what it does methods): `TiingoPlugin` (TIINGO) and `TiingoForex` (FOREX) share the
 base `TiingoFeed`, which holds what both declare and do alike (the key, the plan's view of the
 settings, the window kept, the client: one account's limits). It relies on plugin API 2.0 (the
@@ -30,13 +30,13 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 
-from liminal_lib.config import Tier
-from liminal_lib.errors import SourceError
-from liminal_lib.freshness import Delay
-from liminal_lib.sources.archive import ET
-from liminal_lib.sources.http import PublicClient
-from liminal_lib.sources.registry import FeedPlugin, KeyVar, MachineLedger, Scanned, limiter, machine_caps
-from liminal_lib.sources.stream import Live, session_at
+from liminal_libs.config import Tier
+from liminal_libs.errors import SourceError
+from liminal_libs.freshness import Delay
+from liminal_libs.sources.archive import ET
+from liminal_libs.sources.http import PublicClient
+from liminal_libs.sources.registry import FeedPlugin, KeyVar, MachineLedger, Scanned, limiter, machine_caps
+from liminal_libs.sources.stream import Live, session_at
 from .client import TiingoFxSource, TiingoSource
 
 API = "https://api.tiingo.com"

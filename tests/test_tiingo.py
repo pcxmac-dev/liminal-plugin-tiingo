@@ -9,19 +9,19 @@ from importlib.metadata import version
 
 import pytest
 
-from liminal_lib import freshness
-from liminal_lib.collector import history_floor
-from liminal_lib.config import load_settings
-from liminal_lib.errors import NotEntitled
-from liminal_lib.sources import feed_profiles, is_archive, markets, provider, providers, rate_window, registry, supports
-from liminal_lib.sources.archive import ET, ms
-from liminal_lib.sources.http import PublicClient
-from liminal_lib.symbols import resolve
+from liminal_libs import freshness
+from liminal_libs.collector import history_floor
+from liminal_libs.config import load_settings
+from liminal_libs.errors import NotEntitled
+from liminal_libs.sources import feed_profiles, is_archive, markets, provider, providers, rate_window, registry, supports
+from liminal_libs.sources.archive import ET, ms
+from liminal_libs.sources.http import PublicClient
+from liminal_libs.symbols import resolve
 
-import liminal_plugin_tiingo as tiingo
-from liminal_plugin_tiingo import (FOREX, FX_TIER, PER_DAY, PER_RUN, TIER, TIINGO, TIINGO_BOATS, BoatsPoller, TiingoFeed,
+import plugin_integrator_tiingo as tiingo
+from plugin_integrator_tiingo import (FOREX, FX_TIER, PER_DAY, PER_RUN, TIER, TIINGO, TIINGO_BOATS, BoatsPoller, TiingoFeed,
                                    TiingoForex, TiingoPlugin, _iso_ms, boats_live, plan_of)
-from liminal_plugin_tiingo.client import TiingoFxSource, TiingoSource, split_adjust, tiingo_symbol
+from plugin_integrator_tiingo.client import TiingoFxSource, TiingoSource, split_adjust, tiingo_symbol
 
 from .conftest import FakeResponse, FakeSession
 
@@ -193,13 +193,13 @@ def test_the_app_loads_its_two_feeds_from_this_package_with_its_own_version():
     for name in ("tiingo", "tiingofx"):
         p = provider(name)
         assert p is not None, dict(registry.errors())
-        assert p.origin in {"package: liminal-plugin-tiingo (liminal_plugin_tiingo)", "plugins/liminal-plugin-tiingo (liminal_plugin_tiingo)"}  # its package, or its checkout in the workspace\'s plugin directory
-        assert p.version == version("liminal-plugin-tiingo") and p.api == "2.0"
+        assert p.origin in {"package: plugin-integrator-tiingo (plugin_integrator_tiingo)", "plugins/plugin-integrator-tiingo (plugin_integrator_tiingo)"}  # its package, or its checkout in the workspace\'s plugin directory
+        assert p.version == version("plugin-integrator-tiingo") and p.api == "2.0"
         assert registry.api_refusal(p.api) is None
     assert tiingo.TIINGO.version == "" and tiingo.FOREX.version == ""
     assert not [why for where, why in registry.errors() if "tiingo" in where or "tiingo" in why]
     row = {r["name"]: r for r in registry.menu()}["tiingo"]
-    assert (row["version"], row["api"]) == (version("liminal-plugin-tiingo"), "2.0")
+    assert (row["version"], row["api"]) == (version("plugin-integrator-tiingo"), "2.0")
     assert registry.plugin_feeds("tiingo") == ["tiingo", "tiingofx"] and registry.plugin_of("tiingofx") == "tiingo"
 
 

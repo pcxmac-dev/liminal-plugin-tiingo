@@ -2,7 +2,9 @@
 
 ## 0.2.0 (2026-11-03)
 
-Classes on plugin API 2.0 (liminal-lib 1.3.0; the user: "all the plugins under liminal should basically
+Renamed `plugin-integrator-tiingo` (the package `plugin_integrator_tiingo`; it was `liminal-plugin-tiingo`) on 2026-11-03: the naming by system (plugins are `plugin-<app>-<name>`), on liminal-libs 1.4.0 (`liminal_libs`, the library renamed with it).
+
+Classes on plugin API 2.0 (liminal-libs 1.3.0; the user: "all the plugins under liminal should basically
 follow inheritance/oop paradigm"), versioned 0.2.0 with Liminal's release (every distribution at 0.2.0 on
 a `release/0.2.0` branch). The two feeds are `TiingoPlugin` (`TIINGO`) and `TiingoForex` (`FOREX`, the
 part: `part_of`), both `TiingoFeed`, the base holding what they declare and do alike (the key, `view`,
@@ -25,15 +27,15 @@ symbols"): the stocks feed carries them (plugin API 1.12, `Provider.exchanges`: 
 stored as `600519.SS` and `000001.SZ` (the library's notation) and asked for by their bare codes, Tiingo's form
 (`/tiingo/daily/600519`, from 2007-01-04). A listing's record names it and its exchange (`instrument`); the
 exchanges come by name (`exchanges`); with `TIINGO_LISTINGS=on` the A-shares are listed in the directory from
-Tiingo's supported-tickers file (about 10 MB, at each directory refresh while on). Requires liminal-lib 1.2.0.
+Tiingo's supported-tickers file (about 10 MB, at each directory refresh while on). Requires liminal-libs 1.2.0.
 
 ## 1.4.1 (2026-11-02)
 
-The plugin imports the library as `liminal_lib` and depends on liminal-lib (the app, renamed liminal-app, is no longer needed to run the tests; the user, 2026-11-02: "lets rename the app to liminal-app").
+The plugin imports the library as `liminal_libs` and depends on liminal-libs (the app, renamed liminal-charts, is no longer needed to run the tests; the user, 2026-11-02: "lets rename the app to liminal-charts").
 
 ## 1.4.0 (2026-11-01)
 
-- Released as its own package, `liminal-plugin-tiingo`, registered under the entry point group
+- Released as its own package, `plugin-integrator-tiingo`, registered under the entry point group
   `liminal.providers` (a module of two feeds: `tiingo`, `tiingofx`); its version is the distribution's.
 - Its free plan and caps are in it (`TIER`, `PER_RUN`, `PER_DAY`), no longer in the app's
   `config.PUBLIC_FEEDS`; its key is read from the settings' plugin variables (`Settings.env`), no

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 (2026-11-03)
+
+Classes on plugin API 2.0 (liminal-lib 1.3.0; the user: "all the plugins under liminal should basically
+follow inheritance/oop paradigm"), versioned 0.2.0 with Liminal's release (every distribution at 0.2.0 on
+a `release/0.2.0` branch). The two feeds are `TiingoPlugin` (`TIINGO`) and `TiingoForex` (`FOREX`, the
+part: `part_of`), both `TiingoFeed`, the base holding what they declare and do alike (the key, `view`,
+`rate`, `has_keys`, and `client`: the client on the key, its window and day cap held under Tiingo's name
+for both); what each declares is a class attribute of the record field's name, what it does a method of
+the callback's (the stocks' `build`, `reporter`, `markets`, `scan`, Blue Ocean's nights a `live` property
+polled by `night_poller`; the forex's `view` (once `view_forex`: the base's, with the currencies'
+history), `build` (once `build_forex`), `markets`). The forex declares its publication delay itself
+(`TiingoForex.delays`: the tiingofx row the library's `freshness.py` held). Nothing they do changed: the
+same requests, plans, scan, strings and limits.
+
 ## 1.5.1 (2026-11-03)
 
 `TIINGO_LISTINGS` has its choices (off, on) in the record, so the app's Plugins view offers it beside the plan.

@@ -1,6 +1,7 @@
 """The Tiingo plugin, run against the app installed beside it: its daily bars and their split
 adjustment, its forex windows, its plans, its Blue Ocean poller's reading, and the app loading its
-two feeds from this package with its own version and the facts they had as built-ins."""
+two feeds from this package (TiingoPlugin and TiingoForex, plugin API 2.0) with its own version and the
+facts they had as built-ins."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
@@ -18,7 +19,8 @@ from liminal_lib.sources.http import PublicClient
 from liminal_lib.symbols import resolve
 
 import liminal_plugin_tiingo as tiingo
-from liminal_plugin_tiingo import PER_DAY, PER_RUN, TIER, TIINGO_BOATS, BoatsPoller, _iso_ms, boats_live, plan_of
+from liminal_plugin_tiingo import (FOREX, FX_TIER, PER_DAY, PER_RUN, TIER, TIINGO, TIINGO_BOATS, BoatsPoller, TiingoFeed,
+                                   TiingoForex, TiingoPlugin, _iso_ms, boats_live, plan_of)
 from liminal_plugin_tiingo.client import TiingoFxSource, TiingoSource, split_adjust, tiingo_symbol
 
 from .conftest import FakeResponse, FakeSession
@@ -192,13 +194,40 @@ def test_the_app_loads_its_two_feeds_from_this_package_with_its_own_version():
         p = provider(name)
         assert p is not None, dict(registry.errors())
         assert p.origin in {"package: liminal-plugin-tiingo (liminal_plugin_tiingo)", "plugins/liminal-plugin-tiingo (liminal_plugin_tiingo)"}  # its package, or its checkout in the workspace\'s plugin directory
-        assert p.version == version("liminal-plugin-tiingo") and p.api == "1.12"
+        assert p.version == version("liminal-plugin-tiingo") and p.api == "2.0"
         assert registry.api_refusal(p.api) is None
     assert tiingo.TIINGO.version == "" and tiingo.FOREX.version == ""
     assert not [why for where, why in registry.errors() if "tiingo" in where or "tiingo" in why]
     row = {r["name"]: r for r in registry.menu()}["tiingo"]
-    assert (row["version"], row["api"]) == (version("liminal-plugin-tiingo"), "1.12")
+    assert (row["version"], row["api"]) == (version("liminal-plugin-tiingo"), "2.0")
     assert registry.plugin_feeds("tiingo") == ["tiingo", "tiingofx"] and registry.plugin_of("tiingofx") == "tiingo"
+
+
+def test_its_feeds_are_classes_on_plugin_api_2_0_and_the_app_loads_them_as_such():
+    assert isinstance(TIINGO, TiingoPlugin) and isinstance(FOREX, TiingoForex) and tiingo.PLUGINS == (TIINGO, FOREX)
+    assert isinstance(TIINGO, TiingoFeed) and isinstance(FOREX, TiingoFeed)  # one plugin: what both share
+    assert TIINGO.api == "2.0" == FOREX.api and not TIINGO.is_record and not FOREX.is_record
+    assert FOREX.keys is TIINGO.keys and FOREX.signup == TIINGO.signup and FOREX.part_of == "tiingo" == FOREX.account
+    assert TIINGO.has_scan and not FOREX.has_scan  # the forex has no scan of its own, as before
+    assert TIINGO.gives("reporter") and not FOREX.gives("reporter") and not TIINGO.has_settings and not FOREX.has_settings
+    for feed in (TIINGO, FOREX):
+        assert feed.gives("build") and feed.gives("view") and feed.gives("rate") and feed.gives("has_keys") and feed.gives("markets")
+        assert not feed.gives("serves") and not feed.gives("carries") and not feed.gives("plan_resolutions")
+    assert TIINGO.archival and not FOREX.archival and TIINGO.live[0].poller == TIINGO.night_poller and FOREX.live == ()
+    # the forex's publication delay, the library's row, declared by the feed (2.0); the stocks' plans keep the default
+    assert FOREX.delays == {"tiingofx": {"fx": freshness.Delay("utc_day")}} and TIINGO.delays == {}
+    assert TIINGO.hours == {} and FOREX.hours == {}
+    registry.reload()
+    assert freshness.plan_delay(FX_TIER, "fx").kind == "utc_day" and freshness.DELAYS.declare(FOREX) is False
+    assert freshness.plan_delay(TIER, "stock").kind == "eod"
+    # the registry loads them as the classes: a copy each (its origin and version set), the same type
+    p, fx = registry.providers()["tiingo"], registry.providers()["tiingofx"]
+    assert type(p) is TiingoPlugin and type(fx) is TiingoForex and p is not TIINGO and fx is not FOREX
+    assert p.has_scan and not fx.has_scan and TIINGO_BOATS in registry.live_feeds()
+    starter = load_settings(env=KEYS, env_file=None)
+    power = load_settings(env={**KEYS, "TIINGO_PLAN": "power"}, env_file=None)
+    assert TIINGO.night_poller(starter) is None and isinstance(TIINGO.night_poller(power), BoatsPoller)
+    assert repr(TIINGO) == "<TiingoPlugin 'tiingo': built in>" and repr(fx).startswith("<TiingoForex 'tiingofx': ")
 
 
 def test_it_keeps_the_facts_it_had_built_in(monkeypatch):
@@ -228,6 +257,6 @@ def test_it_keeps_the_facts_it_had_built_in(monkeypatch):
     held = []
     monkeypatch.setattr(tiingo, "limiter", lambda name, st, key: held.append(("window", name)))
     monkeypatch.setattr(tiingo, "machine_caps", lambda client, name, st, key: held.append(("day", name)) or client)
-    source = tiingo.build_forex(power, 5)
+    source = tiingo.FOREX.build(power, 5)
     assert held == [("window", "tiingo"), ("day", "tiingo")] and source.name == "tiingofx"
-    assert source.symbols_per_month is None and tiingo.build(s, 5).symbols_per_month == 450  # Power: every symbol
+    assert source.symbols_per_month is None and tiingo.TIINGO.build(s, 5).symbols_per_month == 450  # Power: every symbol

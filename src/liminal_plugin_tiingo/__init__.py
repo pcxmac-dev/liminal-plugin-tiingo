@@ -2,12 +2,15 @@
 A-shares from 2007 with a free account key (a closed archive), its forex minutes from 2020 (a feed
 of this plugin on the same key), and Blue Ocean's overnight nights polled live on a paid plan.
 
-A Liminal plugin released on its own (liminal.sources.registry: Provider), registered under the
-entry point group `liminal.providers` as `tiingo`: one plugin, two feeds (PLUGINS: the stocks'
-daily archive `tiingo`, its forex `tiingofx`). It relies on plugin API 1.12 (the exchanges a feed
-carries: Provider.exchanges, so a listing abroad, 600519.SS, comes to it and to no US feed) and
-nothing of the app outside it (docs/ARCHITECTURE.md in liminal: "Providers are plugins"); its
-version is this distribution's (pyproject.toml), so the records' versions are left empty.
+A Liminal plugin released on its own, registered under the entry point group `liminal.providers` as
+`tiingo`: one plugin, two feeds (PLUGINS: the stocks' daily archive `tiingo`, its forex `tiingofx`),
+a class each on the class contract (plugin API 2.0, liminal_lib.sources.plugin: what a feed declares
+class attributes, what it does methods): `TiingoPlugin` (TIINGO) and `TiingoForex` (FOREX) share the
+base `TiingoFeed`, which holds what both declare and do alike (the key, the plan's view of the
+settings, the window kept, the client: one account's limits). It relies on plugin API 2.0 (the
+exchanges a feed carries, `exchanges`, so a listing abroad, 600519.SS, comes to it and to no US feed)
+and nothing of the app outside it (docs/ARCHITECTURE.md in liminal: "Providers are plugins"); its
+version is this distribution's (pyproject.toml), so the classes' versions are left empty.
 
 Its scan (`capabilities`, one request each) asks what else the account's plan gives: IEX's minute
 bars (one exchange), forex and crypto bars, and Blue Ocean's overnight bars (a paid add-on,
@@ -29,9 +32,10 @@ from datetime import date, datetime, timedelta, timezone
 
 from liminal_lib.config import Tier
 from liminal_lib.errors import SourceError
+from liminal_lib.freshness import Delay
 from liminal_lib.sources.archive import ET
 from liminal_lib.sources.http import PublicClient
-from liminal_lib.sources.registry import KeyVar, MachineLedger, Provider, Scanned, limiter, machine_caps
+from liminal_lib.sources.registry import FeedPlugin, KeyVar, MachineLedger, Scanned, limiter, machine_caps
 from liminal_lib.sources.stream import Live, session_at
 from .client import TiingoFxSource, TiingoSource
 
@@ -87,28 +91,6 @@ def plan_of(settings) -> str:
     return name if name in PLANS else "starter"
 
 
-def view(base):
-    tier, per_run, per_day, _ = PLANS[plan_of(base)]
-    return replace(base, tier=tier, max_requests_per_run=per_run, max_requests_per_day=per_day, origin=base)
-
-
-def reporter(report, settings):
-    """Its plan's symbols a month: TIINGO_PLAN's, or without the settings (the delivery scheme's
-    reports) the plan its tier names: a paid plan's report said Starter's 450 to the scheme."""
-    plan = plan_of(settings) if settings is not None else next(
-        (name for name, p in PLANS.items() if p[0].name == report.plan), "starter")
-    return replace(report, limits=replace(report.limits, symbols_a_month=PLANS[plan][3]))
-
-
-def build(settings, request_budget):
-    key = api_key(settings)
-    headers = {"Authorization": f"Token {key}"} if key else {}
-    client = PublicClient(API, headers=headers, request_budget=request_budget,
-                          rate_limiter=limiter("tiingo", settings, key))
-    source = TiingoSource(machine_caps(client, "tiingo", settings, key), has_key=bool(key), listings_on=listings_on(settings))
-    return monthly_symbols(source, settings, key)
-
-
 def monthly_symbols(source, settings, key):
     """The plan's different symbols a month on a Tiingo source (the app's collector._monthly_symbol),
     counted for the key on the whole machine: its stocks and its forex (FOREX) take the same places."""
@@ -143,36 +125,6 @@ def rows_of(answer) -> int:
     if isinstance(answer, list) and answer and isinstance(answer[0], dict) and "priceData" in answer[0]:
         return sum(len(a.get("priceData") or []) for a in answer)
     return len(answer) if isinstance(answer, list) else 0
-
-
-def scan(source, today: date | None = None) -> Scanned:
-    """Each probe once; the plan from the News request: news served (articles), a paid plan
-    (Power's limits, the lower: Commercial's answers are the same); refused by the plan (401, 403),
-    Starter; anything else (a timeout, a server error, an answer without articles: an error said
-    in a 200, an empty list), no plan: a paid plan's far higher limits are never taken on less."""
-    out, plan, alike = [], {}, {}
-    for what, path, params in probes(today or date.today()):
-        try:
-            answer = source.client.get(path, params)
-            n = rows_of(answer)
-        except SourceError as e:  # NotEntitled included: a refusal names the add-on it needs
-            out.append((what, False, str(e)[:200]))
-            if what == NEWS and e.status in (401, 403):
-                plan["TIINGO_PLAN"] = "starter"
-            continue
-        if what == NEWS:
-            articles = isinstance(answer, list) and any(isinstance(a, dict) and (a.get("title") or a.get("id"))
-                                                        for a in answer)
-            if not articles:
-                out.append((what, False, f"answered without articles ({str(answer)[:120]}): the plan is not told"))
-                continue
-            plan["TIINGO_PLAN"], alike["TIINGO_PLAN"] = "power", ("commercial",)
-            out.append((what, True, "served: a paid plan, Power or Commercial (the same data)"))
-        elif what == FUNDAMENTALS:
-            out.append((what, True, f"served: the add-on ({n:,} rows)"))
-        else:
-            out.append((what, True, f"{n:,} bars for {params['startDate']}"))
-    return Scanned(tuple(out), plan, alike)
 
 
 # -- Blue Ocean's night, live: tiingo (blue ocean) ------------------------------------------------
@@ -266,34 +218,117 @@ class BoatsPoller:
         return sorted(bars, key=lambda b: b["t"])
 
 
-def night_poller(settings) -> BoatsPoller | None:
-    """The poller of Blue Ocean's nights, on Tiingo's key's limits (its client: the window and day
-    cap), when they are polled here (boats_live)."""
-    return BoatsPoller(build(settings, None).client) if boats_live(settings) else None
+# -- the feeds: one plugin, two classes on a base of their own ------------------------------------
+
+class TiingoFeed(FeedPlugin):
+    """What Tiingo's two feeds declare and do alike, on one account's key: where it is made and whether
+    it is set, the plan's view of the app's settings (TIINGO_PLAN's caps and tier: `view`), the window
+    the limiter keeps (`rate`: Starter's 50 an hour), and the client on the key, its window and day cap
+    held for the machine under Tiingo's name (`client`: one account's limits, for both feeds)."""
+
+    api = "2.0"  # the contract this plugin is written for (the classes; exchanges; MachineLedger, session_at); its version: the distribution's
+    keys = (KeyVar(KEY),)
+    signup = "tiingo.com: a free account's API token"
+
+    def view(self, base):
+        tier, per_run, per_day, _ = PLANS[plan_of(base)]
+        return replace(base, tier=tier, max_requests_per_run=per_run, max_requests_per_day=per_day, origin=base)
+
+    def rate(self, settings):
+        return PLANS[plan_of(settings)][1], 3600.0  # Starter: 50 an hour
+
+    def has_keys(self, settings) -> bool:
+        return bool(api_key(settings))
+
+    def client(self, settings, request_budget):
+        """Tiingo's client on the key (the headers), its window and day cap held for the machine under
+        Tiingo's name: one account's limits, for both feeds. Returns (the client, the key or None)."""
+        key = api_key(settings)
+        headers = {"Authorization": f"Token {key}"} if key else {}
+        client = PublicClient(API, headers=headers, request_budget=request_budget,
+                              rate_limiter=limiter("tiingo", settings, key))
+        return machine_caps(client, "tiingo", settings, key), key
 
 
-TIINGO = Provider(
-    api="1.12",  # the contract it needs (Provider.exchanges; MachineLedger, session_at); its version: the distribution's
-    name="tiingo", title="Tiingo", build=build, assets=frozenset({"stock"}), order=60,
-    about="US stock daily bars from 1962, Shanghai's and Shenzhen's A-shares from 2007 (a free account key)",
-    keys=(KeyVar(KEY),), signup="tiingo.com: a free account's API token",
-    exchanges=frozenset({"US", "XSHG", "XSHE"}),  # every US listing, and the A-shares (600519.SS, 000001.SZ)
-    options=("TIINGO_LISTINGS",),  # on: the A-shares listed in the directory from the supported-tickers file (~10 MB)
-    archival=True, tier=TIER, per_run=PER_RUN, per_day=PER_DAY,
-    limits="Starter (free): 50 requests an hour, 1,000 a day, 500 symbols and 1 GB a month; "
-           "Power ($30 a month): 10,000 an hour, 100,000 a day, 40 GB a month; "
-           "Commercial ($50 a month, a business): 20,000 an hour, 150,000 a day, 100 GB a month",
-    symbols_per_month=450,  # Starter's 500 different symbols a month, a little inside (Power: PLANS)
-    plan_vars=("TIINGO_PLAN",), plan_choices={"TIINGO_PLAN": tuple(PLANS), "TIINGO_LISTINGS": ("off", "on")},
-    plan_note=PLAN_NOTE,  # TIINGO_LISTINGS: its choices, so the Plugins view offers it (off, the default, first)
-    view=view, reporter=reporter,
-    provides={"stock": ("day",)}, per_request={"day": None},  # one request: a symbol's whole history
-    has_keys=lambda s: bool(api_key(s)),
-    live=(Live(TIINGO_BOATS, "stock", poller=night_poller, label="tiingo (blue ocean)", partial=True),),
-    rate=lambda settings: (PLANS[plan_of(settings)][1], 3600.0),  # Starter: 50 an hour
-    markets=lambda settings: {"stock": "sip"},
-    scan=scan,
-)
+class TiingoPlugin(TiingoFeed):
+    """Tiingo's stocks: the daily archive (US listings and the A-shares), its plan's report, its scan,
+    and Blue Ocean's nights polled live on a paid plan."""
+
+    name = "tiingo"
+    title = "Tiingo"
+    about = "US stock daily bars from 1962, Shanghai's and Shenzhen's A-shares from 2007 (a free account key)"
+    order = 60
+    assets = frozenset({"stock"})
+    exchanges = frozenset({"US", "XSHG", "XSHE"})  # every US listing, and the A-shares (600519.SS, 000001.SZ)
+    options = ("TIINGO_LISTINGS",)  # on: the A-shares listed in the directory from the supported-tickers file (~10 MB)
+    archival = True
+    tier = TIER
+    per_run = PER_RUN
+    per_day = PER_DAY
+    limits = ("Starter (free): 50 requests an hour, 1,000 a day, 500 symbols and 1 GB a month; "
+              "Power ($30 a month): 10,000 an hour, 100,000 a day, 40 GB a month; "
+              "Commercial ($50 a month, a business): 20,000 an hour, 150,000 a day, 100 GB a month")
+    symbols_per_month = 450  # Starter's 500 different symbols a month, a little inside (Power: PLANS)
+    plan_vars = ("TIINGO_PLAN",)
+    # TIINGO_LISTINGS: its choices, so the Plugins view offers it (off, the default, first)
+    plan_choices = {"TIINGO_PLAN": tuple(PLANS), "TIINGO_LISTINGS": ("off", "on")}
+    plan_note = PLAN_NOTE
+    provides = {"stock": ("day",)}
+    per_request = {"day": None}  # one request: a symbol's whole history
+
+    def build(self, settings, request_budget):
+        client, key = self.client(settings, request_budget)
+        source = TiingoSource(client, has_key=bool(key), listings_on=listings_on(settings))
+        return monthly_symbols(source, settings, key)
+
+    def reporter(self, report, settings):
+        """Its plan's symbols a month: TIINGO_PLAN's, or without the settings (the delivery scheme's
+        reports) the plan its tier names: a paid plan's report said Starter's 450 to the scheme."""
+        plan = plan_of(settings) if settings is not None else next(
+            (name for name, p in PLANS.items() if p[0].name == report.plan), "starter")
+        return replace(report, limits=replace(report.limits, symbols_a_month=PLANS[plan][3]))
+
+    def markets(self, settings):
+        return {"stock": "sip"}
+
+    def scan(self, source, today: date | None = None) -> Scanned:
+        """Each probe once; the plan from the News request: news served (articles), a paid plan
+        (Power's limits, the lower: Commercial's answers are the same); refused by the plan (401, 403),
+        Starter; anything else (a timeout, a server error, an answer without articles: an error said
+        in a 200, an empty list), no plan: a paid plan's far higher limits are never taken on less."""
+        out, plan, alike = [], {}, {}
+        for what, path, params in probes(today or date.today()):
+            try:
+                answer = source.client.get(path, params)
+                n = rows_of(answer)
+            except SourceError as e:  # NotEntitled included: a refusal names the add-on it needs
+                out.append((what, False, str(e)[:200]))
+                if what == NEWS and e.status in (401, 403):
+                    plan["TIINGO_PLAN"] = "starter"
+                continue
+            if what == NEWS:
+                articles = isinstance(answer, list) and any(isinstance(a, dict) and (a.get("title") or a.get("id"))
+                                                            for a in answer)
+                if not articles:
+                    out.append((what, False, f"answered without articles ({str(answer)[:120]}): the plan is not told"))
+                    continue
+                plan["TIINGO_PLAN"], alike["TIINGO_PLAN"] = "power", ("commercial",)
+                out.append((what, True, "served: a paid plan, Power or Commercial (the same data)"))
+            elif what == FUNDAMENTALS:
+                out.append((what, True, f"served: the add-on ({n:,} rows)"))
+            else:
+                out.append((what, True, f"{n:,} bars for {params['startDate']}"))
+        return Scanned(tuple(out), plan, alike)
+
+    def night_poller(self, settings) -> BoatsPoller | None:
+        """The poller of Blue Ocean's nights, on Tiingo's key's limits (its client: the window and day
+        cap), when they are polled here (boats_live)."""
+        return BoatsPoller(self.build(settings, None).client) if boats_live(settings) else None
+
+    @property
+    def live(self):
+        """Blue Ocean's night under way, polled from Tiingo (tiingo (blue ocean)): one venue's nights."""
+        return (Live(TIINGO_BOATS, "stock", poller=self.night_poller, label="tiingo (blue ocean)", partial=True),)
 
 
 # -- its forex: tiingo (forex) -----------------------------------------------------------------------
@@ -306,33 +341,41 @@ TIINGO = Provider(
 FX_TIER = Tier("tiingofx", requests_per_minute=None, history_years=None, history_start=TiingoFxSource.START)
 
 
-def view_forex(base):
-    """Tiingo's plan (its caps and window, TIINGO_PLAN), with the currencies' history from 2020."""
-    out = view(base)
-    return replace(out, tier=replace(out.tier, by_asset=(("fx", FX_TIER),)))
+class TiingoForex(TiingoFeed):
+    """Tiingo's forex, a part of this plugin: the currencies' minutes on the same key and limits as the
+    stocks, their history from 2020."""
+
+    name = "tiingofx"
+    title = "Forex"
+    about = "currency pairs' 1-minute bars from 2020, from Tiingo (its key and limits)"
+    order = 61
+    account = "tiingo"
+    part_of = "tiingo"
+    assets = frozenset({"fx"})
+    kind = "vendor"
+    provides = {"fx": ("minute",)}
+    per_request = {"minute": TiingoFxSource.WINDOW_DAYS * 1440}
+    limits = "shares Tiingo's: its plan's requests an hour and a day, for both feeds"
+    missing_keys_note = "key not set: Tiingo's forex comes with TIINGO_API_KEY"
+    # When it publishes (the row the library's freshness.PLAN_DELAYS held for it, declared by the feed
+    # itself since 2.0): taken for history, whole UTC days, through the day before (how soon its newest
+    # minutes are final is not known; a minute asked too soon and found empty would be counted as held
+    # and never asked again).
+    delays = {"tiingofx": {"fx": Delay("utc_day")}}
+
+    def view(self, base):
+        """Tiingo's plan (its caps and window, TIINGO_PLAN), with the currencies' history from 2020."""
+        out = super().view(base)
+        return replace(out, tier=replace(out.tier, by_asset=(("fx", FX_TIER),)))
+
+    def build(self, settings, request_budget):
+        client, key = self.client(settings, request_budget)
+        # its pairs take places among the plan's different symbols a month, with Tiingo's stocks
+        return monthly_symbols(TiingoFxSource(client, has_key=bool(key)), settings, key)
+
+    def markets(self, settings):
+        return {"fx": "tiingofx"}
 
 
-def build_forex(settings, request_budget):
-    key = api_key(settings)
-    headers = {"Authorization": f"Token {key}"} if key else {}
-    # Tiingo's window and day cap, held for the machine under Tiingo's name: one account's limits
-    client = PublicClient(API, headers=headers, request_budget=request_budget,
-                          rate_limiter=limiter("tiingo", settings, key))
-    # its pairs take places among the plan's different symbols a month, with Tiingo's stocks
-    return monthly_symbols(TiingoFxSource(machine_caps(client, "tiingo", settings, key), has_key=bool(key)), settings, key)
-
-
-FOREX = Provider(
-    api="1.12",  # the contract it needs (part_of; the ledger through it); its version: the distribution's
-    name="tiingofx", title="Forex", build=build_forex, assets=frozenset({"fx"}), order=61, account="tiingo",
-    part_of="tiingo",
-    about="currency pairs' 1-minute bars from 2020, from Tiingo (its key and limits)",
-    keys=TIINGO.keys, signup=TIINGO.signup, kind="vendor",
-    provides={"fx": ("minute",)}, per_request={"minute": TiingoFxSource.WINDOW_DAYS * 1440},
-    limits="shares Tiingo's: its plan's requests an hour and a day, for both feeds",
-    missing_keys_note="key not set: Tiingo's forex comes with TIINGO_API_KEY",
-    view=view_forex, rate=TIINGO.rate, has_keys=lambda s: bool(api_key(s)),
-    markets=lambda settings: {"fx": "tiingofx"},
-)
-
+TIINGO, FOREX = TiingoPlugin(), TiingoForex()
 PLUGINS = (TIINGO, FOREX)  # one plugin, two feeds: the stocks' daily archive, and its forex minutes
